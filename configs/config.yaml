@@ -1,0 +1,7 @@
+defaults:
+  - dataset: mutag
+  - model: gin
+  - train: default
+
+seed: 42
+log_dir: results/runs
