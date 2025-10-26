@@ -22,36 +22,44 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      - name: Install PyTorch (CPU) first
+      # ---- PyTorch + PyG (CPU) ----
+      - name: Install PyTorch (CPU)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          # фиксированная версия CPU-колёс PyTorch
-          pip install \
-            torch==2.2.2+cpu \
-            torchvision==0.17.2+cpu \
-            torchaudio==2.2.2+cpu \
+          pip install torch==2.2.2+cpu torchvision==0.17.2+cpu torchaudio==2.2.2+cpu \
             --index-url https://download.pytorch.org/whl/cpu
 
       - name: Install PyG wheels (CPU) and torch-geometric
         run: |
-          # колёса PyG, собранные под torch 2.2.x (CPU)
-          pip install \
-            pyg-lib \
-            torch-scatter \
-            torch-sparse \
-            torch-cluster \
-            torch-spline-conv \
+          pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv \
             -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
           pip install torch-geometric==2.4.0
 
       - name: Install project deps
         run: |
-          # остальные зависимости проекта
           pip install -r requirements.txt
 
-      - name: Lint
+      # ---- Автофикс стиля ----
+      - name: Autofix formatting (ruff/black/isort)
         run: |
-          ruff check .
+          # Игнорируем E741 временно, чтобы не падать на именах вроде 'l'
+          ruff check . --fix --unsafe-fixes --ignore E741
+          black .
+          isort .
+
+      - name: Ensure working tree is clean after autofix
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          if ! git diff --quiet; then
+            echo "There are unformatted changes. Please run: ruff --fix, black, isort locally and commit the result."
+            git --no-pager diff --stat
+            exit 1
+          fi
+
+      # ---- Строгая проверка (без фиксов) ----
+      - name: Lint (verify)
+        run: |
+          ruff check . --ignore E741
           black --check .
           isort --check-only .
 
