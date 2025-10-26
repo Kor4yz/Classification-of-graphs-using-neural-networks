@@ -9,8 +9,8 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      # чтобы pytest корректно импортировал пакеты из src/
-      PYTHONPATH: ${{ github.workspace }}/src
+      # ВАЖНО: корень репозитория, чтобы импорты вида `from src...` работали
+      PYTHONPATH: ${{ github.workspace }}
 
     steps:
       - uses: actions/checkout@v4
@@ -27,19 +27,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # ---------- Пинним NumPy < 2.0 (совместимо с torch 2.2) ----------
+      # ---------- pin numpy < 2.0 для совместимости с torch 2.2 ----------
       - name: Create constraints
-        run: |
-          echo "numpy<2.0.0" > constraints.txt
+        run: echo "numpy<2.0.0" > constraints.txt
 
-      - name: Install base tools
-        run: |
-          python -m pip install --upgrade pip setuptools wheel
+      - name: Upgrade base tools
+        run: python -m pip install --upgrade pip setuptools wheel
 
       # ---------- PyTorch (CPU) ----------
       - name: Install PyTorch (CPU)
         run: |
-          pip install torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu -c constraints.txt
+          pip install torch==2.2.2+cpu \
+            --index-url https://download.pytorch.org/whl/cpu \
+            -c constraints.txt
 
       # ---------- PyG wheels + torch-geometric ----------
       - name: Install PyG wheels and torch-geometric
@@ -55,10 +55,9 @@ jobs:
           pip install torch-geometric==2.4.0 -c constraints.txt
 
       - name: Install project deps (respect constraints)
-        run: |
-          pip install -r requirements.txt -c constraints.txt
+        run: pip install -r requirements.txt -c constraints.txt
 
-      # ---------- Линт (мягкий, не роняет сборку) ----------
+      # ---------- Линт (soft: не роняет сборку) ----------
       - name: Lint (ruff/black/isort) — soft
         continue-on-error: true
         run: |
@@ -75,7 +74,7 @@ jobs:
             --skip-glob "src/graph2vec_legacy/**" \
             --skip-glob "src/third_party/**" \
             --skip "src/skipgram.py" || true
-          # верификация (тоже soft)
+          # verify (soft)
           ruff check . \
             --extend-exclude "$EXCL" \
             --per-file-ignores "src/utils.py:E401,E741;src/train_utils.py:F401" || true
@@ -91,4 +90,6 @@ jobs:
       # ---------- Тесты ----------
       - name: Tests
         run: |
+          echo "PYTHONPATH=$PYTHONPATH"
+          python -c "import sys, pprint; pprint.pprint(sys.path[:5])"
           pytest -q -ra
