@@ -7,6 +7,7 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -22,16 +23,21 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
-      # ---- PyTorch + PyG (CPU) ----
+      # ---- PyTorch (CPU) ----
       - name: Install PyTorch (CPU)
         run: |
           python -m pip install --upgrade pip setuptools wheel
-          pip install torch==2.2.2+cpu torchvision==0.17.2+cpu torchaudio==2.2.2+cpu \
-            --index-url https://download.pytorch.org/whl/cpu
+          pip install torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
 
-      - name: Install PyG wheels (CPU) and torch-geometric
+      # ---- PyG wheels (собраны под torch 2.2 CPU) + torch-geometric ----
+      - name: Install PyG wheels and torch-geometric
         run: |
-          pip install pyg-lib torch-scatter torch-sparse torch-cluster torch-spline-conv \
+          pip install \
+            pyg-lib \
+            torch-scatter \
+            torch-sparse \
+            torch-cluster \
+            torch-spline-conv \
             -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
           pip install torch-geometric==2.4.0
 
@@ -39,19 +45,28 @@ jobs:
         run: |
           pip install -r requirements.txt
 
-      # ---- МЯГКИЙ автофикс (не валит пайплайн) ----
-      - name: Autofix formatting (ruff/black/isort) - soft
+      # ---- Строгий линт (с исключениями для легаси/вендор) ----
+      - name: Lint (ruff/black/isort)
         run: |
-          ruff check . --fix --unsafe-fixes --exit-zero
-          black . || true
-          isort . || true
+          # пути/файлы, которые не хотим линтить (портированный код и артефакты)
+          EXCL='(notebooks|data|results|src/graph2vec_legacy|src/third_party|src/skipgram\.py)'
 
-      # ---- Строгая проверка только нашего кода (исключения в pyproject) ----
-      - name: Lint (verify)
-        run: |
-          ruff check .
-          black --check .
-          isort --check-only .
+          # ruff: исключаем легаси и глушим E741 только в src/utils.py
+          ruff check . \
+            --extend-exclude "$EXCL" \
+            --per-file-ignores "src/utils.py:E741"
+
+          # black: те же исключения
+          black --check . --extend-exclude "$EXCL"
+
+          # isort: те же исключения
+          isort --check-only . \
+            --skip-glob "notebooks/**" \
+            --skip-glob "data/**" \
+            --skip-glob "results/**" \
+            --skip-glob "src/graph2vec_legacy/**" \
+            --skip-glob "src/third_party/**" \
+            --skip "src/skipgram.py"
 
       - name: Tests
         run: pytest -q
