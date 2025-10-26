@@ -8,6 +8,10 @@ jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
+    env:
+      # чтобы pytest корректно импортировал пакеты из src/
+      PYTHONPATH: ${{ github.workspace }}/src
+
     steps:
       - uses: actions/checkout@v4
 
@@ -23,11 +27,19 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-pip-
 
+      # ---------- Пинним NumPy < 2.0 (совместимо с torch 2.2) ----------
+      - name: Create constraints
+        run: |
+          echo "numpy<2.0.0" > constraints.txt
+
+      - name: Install base tools
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+
       # ---------- PyTorch (CPU) ----------
       - name: Install PyTorch (CPU)
         run: |
-          python -m pip install --upgrade pip setuptools wheel
-          pip install torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu
+          pip install torch==2.2.2+cpu --index-url https://download.pytorch.org/whl/cpu -c constraints.txt
 
       # ---------- PyG wheels + torch-geometric ----------
       - name: Install PyG wheels and torch-geometric
@@ -38,31 +50,24 @@ jobs:
             torch-sparse \
             torch-cluster \
             torch-spline-conv \
-            -f https://data.pyg.org/whl/torch-2.2.0+cpu.html
-          pip install torch-geometric==2.4.0
+            -f https://data.pyg.org/whl/torch-2.2.0+cpu.html \
+            -c constraints.txt
+          pip install torch-geometric==2.4.0 -c constraints.txt
 
-      - name: Install project deps
+      - name: Install project deps (respect constraints)
         run: |
-          pip install -r requirements.txt
+          pip install -r requirements.txt -c constraints.txt
 
-      # ---------- МЯГКИЙ автофикс и линт ----------
-      # Линт создаёт аннотации, но НЕ роняет пайплайн (continue-on-error).
+      # ---------- Линт (мягкий, не роняет сборку) ----------
       - name: Lint (ruff/black/isort) — soft
         continue-on-error: true
         run: |
-          # исключаем легаси и артефакты
           EXCL='(notebooks|data|results|src/graph2vec_legacy|src/third_party|src/skipgram\.py)'
-
-          echo "== Ruff autofix (не роняет сборку) =="
           ruff check . \
             --extend-exclude "$EXCL" \
             --per-file-ignores "src/utils.py:E401,E741;src/train_utils.py:F401" \
             --fix --unsafe-fixes || true
-
-          echo "== Black format (soft) =="
           black . --extend-exclude "$EXCL" || true
-
-          echo "== isort format (soft) =="
           isort . \
             --skip-glob "notebooks/**" \
             --skip-glob "data/**" \
@@ -70,13 +75,10 @@ jobs:
             --skip-glob "src/graph2vec_legacy/**" \
             --skip-glob "src/third_party/**" \
             --skip "src/skipgram.py" || true
-
-          echo "== Ruff verify (soft) =="
+          # верификация (тоже soft)
           ruff check . \
             --extend-exclude "$EXCL" \
             --per-file-ignores "src/utils.py:E401,E741;src/train_utils.py:F401" || true
-
-          echo "== Black/isort verify (soft) =="
           black --check . --extend-exclude "$EXCL" || true
           isort --check-only . \
             --skip-glob "notebooks/**" \
@@ -88,4 +90,5 @@ jobs:
 
       # ---------- Тесты ----------
       - name: Tests
-        run: pytest -q
+        run: |
+          pytest -q -ra
