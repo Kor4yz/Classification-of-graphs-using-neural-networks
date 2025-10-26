@@ -1,0 +1,7 @@
+max_epochs: 100
+batch_size: 64
+lr: 0.001
+weight_decay: 0.0
+patience: 20
+num_workers: 4
+k_folds: 10
