@@ -1,0 +1,4 @@
+name: GIN
+hidden_dim: 64
+num_layers: 5
+dropout: 0.5
